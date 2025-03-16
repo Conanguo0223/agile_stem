@@ -1,5 +1,4 @@
-README: Water Bottle Manufacturing Simulation with SimPy
-📋 Project Overview
+# 📋 Project Overview
 This simulation models a water bottle manufacturing process using SimPy, including:
 1. Blow Molding
 2. Cleaning
@@ -11,14 +10,14 @@ The simulation supports:
 ✅ Deterministic and stochastic demand
 ✅ Deterministic and stochastic processing times
 ✅ Single-run and multiple-run/replication simulations for performance analysis.
-🚀 Project Structure
+## 🚀 Project Structure
 /project-folder/
 ├── config.py                          # Configuration file for simulation parameters
 ├── process.py                         # Manufacturing process class definition
 ├── manufacturing_simulation.py         # Main simulation file (single run)
 ├── manufacturing_simulation_replication.py  # Simulation with multiple replications
 └── README.docx                         # This guide (Word format)
-🛠 Installation & Setup
+## 🛠 Installation & Setup
 1️⃣ Install Required Libraries
 Ensure you have Python 3.7+ installed. Run the following command:
 
