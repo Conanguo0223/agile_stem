@@ -1,31 +1,23 @@
-# 📋 Project Overview
-This simulation models a water bottle manufacturing process using SimPy, including:
+# Project Overview
+This simulation models a water bottle manufacturing process using SimPy with conveyorbelts between the machines, elements of the simulation includes:
 1. Blow Molding
 2. Cleaning
 3. Filling
 4. Capping & Labeling
 5. Packaging
+6. Conveyor Belts
 
 The simulation supports:
-✅ Deterministic and stochastic demand
-✅ Deterministic and stochastic processing times
-✅ Single-run and multiple-run/replication simulations for performance analysis.
-## 🚀 Project Structure
-/project-folder/
-├── config.py                          # Configuration file for simulation parameters
-├── process.py                         # Manufacturing process class definition
-├── manufacturing_simulation.py         # Main simulation file (single run)
-├── manufacturing_simulation_replication.py  # Simulation with multiple replications
-└── README.docx                         # This guide (Word format)
-## 🛠 Installation & Setup
-1️⃣ Install Required Libraries
+- Deterministic and stochastic demand
+- Deterministic and stochastic processing times
+- Single-run and multiple-run/replication simulations for performance analysis.
+
+## Installation & Setup
+1. Install Required Libraries
 Ensure you have Python 3.7+ installed. Run the following command:
+```pip install simpy numpy```
+2. Configure Simulation Parameters (`config.py`)
 
-pip install simpy numpy
-
-2️⃣ Configure Simulation Parameters (`config.py`)
-🎬 Running the Simulation
-✅ Single Run Simulation:
 Run the single-run simulation using:
 
 python manufacturing_simulation.py
