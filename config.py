@@ -29,6 +29,5 @@ PROCESS_TIMES = [
     4,  # Capping & Labeling: Uniform(3.5,4.5)
     5   # Packaging: Uniform(4,6)
 ]
-
 MACHINE_CAPACITIES = [1, 1, 1, 1, 1]  # Each station has 1 machine
 CONVEYOR_CAPACITIES = [2, 2, 2, 2, 2]  # Each conveyor holds up to 2 items
