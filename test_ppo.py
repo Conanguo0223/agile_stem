@@ -32,6 +32,15 @@ CONFIG = {
         'conv_5': 5.0,
         'conv_6': 5.0
     },
+    'CONVEYOR_INFO':{
+        'min': 2.0,  # Minimum conveyor time
+        'max': 10.0,  # Maximum conveyor time
+        'fall_off_prob': 0.0  # Probability of a bottle falling off the conveyor
+    },
+    'MACHINE_INFO': {
+        'min': 0.5,  # Minimum machine processing time
+        'max': 20.0,  # Maximum machine processing time
+    },
     'SIM_TIME': 1000,
     'STEP_PER_FRAME': 50,
     'VERBOSE': False,
@@ -44,54 +53,145 @@ CONFIG = {
 # --- SIMPY COMPONENTS ---
 import numpy as np
 
-def sample_buffer_capacities():
-    # Example: Gaussian (Normal) capacities, clipped for minimum > 0
-    return {
-        'blow': max(1, int(np.random.normal(10, 2))),
-        'clean': max(1, int(np.random.normal(10, 2))),
-        'wrap': max(1, int(np.random.normal(10, 2))),
-        'storage': max(1, int(np.random.normal(50, 5))),
-        'generic': max(1, int(np.random.normal(5, 1))),
-        'buffer': max(1, int(np.random.normal(50, 10))),
-        'storage_platform': 400  # If you want this fixed
-    }
+def sample_buffer_capacities(miu, sigma):
+    # This is used to generate random environment configurations
+    """
+    Sample buffer capacities based on a normal distribution.
+    Args:
+        miu (list): List of mean of the normal distribution.
+        sigma (list): List of standard deviation of the normal distribution.
+    """
+    capacities = []
+    if len(miu) != len(sigma):
+        raise ValueError("miu and sigma must have the same length")
+    if type(miu) != list or type(sigma) != list:
+        # no specific values provided, use default
+        miu = [10, 10, 10, 50, 5, 50]
+        sigma = [2, 2, 2, 5, 1, 10]
+        for i in range(len(miu)):
+            capacities.append(max(1, int(np.random.normal(miu[i], sigma[i]))))
+    else:
+        for i in range(len(miu)):
+            capacities.append(max(1, int(np.random.normal(miu[i], sigma[i]))))
+    return capacities
+
 class Buffer(simpy.Store):
+    # Buffer class extends simpy.Store to represent a buffer in the assembly line.
     def __init__(self, env, capacity, name):
         super().__init__(env, capacity=capacity)
         self.name = name
 
 class ConveyorBelt:
-    def __init__(self, env, name, input_buffer, output_buffer, time_param):
+    """
+    ConveyorBelt simulates a conveyor belt that transfers items between buffers.
+    It waits for an item to be available in the input buffer, processes it for a specified time,
+    and then puts it into the output buffer. 
+    Tracks wait times and idle times.
+    Args:
+        env (simpy.Environment): Simulation environment.
+        name (str): Name of the conveyor belt.
+        input_buffer (Buffer): Buffer to get items from.
+        output_buffer (Buffer): Buffer to put items into.
+        conveyor_time (float): Time taken to transfer an item.
+        fall_off_prob (float): Probability of a bottle falling off the conveyor.
+    """
+    def __init__(self, env, name, input_buffer, output_buffer, conv_times, conveyor_time, fall_off_prob=0.0):
         self.env = env
         self.name = name
         self.input_buffer = input_buffer
         self.output_buffer = output_buffer
-        self.time_param = time_param
+        self.min_time = conv_times[0]
+        self.max_time = conv_times[1]
+        self.conveyor_time = conveyor_time
         self.proc = env.process(self.run())
+        self.wait_times = []  # List to store the wait times
+        self.last_idle_time = None  # Track when machine becomes idle
+        self.bottle_fall_off_prob = fall_off_prob  # Probability of bottle falling off the conveyor
+        self.fall_off_bottles = 0  # Count of bottles that fall off the conveyor
+
     def run(self):
         while True:
+            self.last_idle_time = self.env.now  # Record when we start waiting for an item
             yield self.input_buffer.get()
-            yield self.env.timeout(self.time_param)
+            wait_time = self.env.now - self.last_idle_time  # Time spent waiting for item
+            self.wait_times.append(wait_time)
+            conveyor_time = max(self.min_time, min(self.conveyor_time, self.max_time))
+            self.conveyor_time = conveyor_time
+            yield self.env.timeout(self.conveyor_time)
+            # Bottle fall off logic: random chance OR output buffer is full
+            buffer_full = len(self.output_buffer.items) >= self.output_buffer.capacity
+            if random.random() < self.bottle_fall_off_prob and buffer_full:
+                self.fall_off_bottles += 1
+                # print(f"Bottle fell off on {self.name} at {self.env.now:.2f} (buffer full: {buffer_full})")
+                continue  # Skip putting the item into the output buffer
+
             yield self.output_buffer.put(1)
 
 class Machine:
-    def __init__(self, env, name, input_buffer, output_buffer, speed):
+    """
+    Machine simulates a processing machine that takes items from an input buffer,
+    processes them for a specified time, and puts them into an output buffer.
+    It tracks wait times and idle times, and can adjust its processing speed.
+    The processing speed can be adjusted within a defined range.
+    TODO: increase process time when buffer is full, decrease when buffer is empty.
+    TODO: if buffer is full for a long time, add machine fix time.
+    TODO: add a wrapping machine that wraps multiple items at once.
+    Args:
+        env (simpy.Environment): Simulation environment.
+        name (str): Name of the machine.
+        input_buffer (Buffer): Buffer to get items from.
+        output_buffer (Buffer): Buffer to put items into.
+        speed (float): Processing speed of the machine.
+    """
+    def __init__(self, env, name, input_buffer, output_buffer, conv_times, time):
         self.env = env
         self.name = name
         self.input_buffer = input_buffer
         self.output_buffer = output_buffer
-        self.speed = speed
+        self.min_time = conv_times[0]
+        self.max_time = conv_times[1]
+        self.process_time = time
         self.proc = env.process(self.run())
-        self.latest_process_time = speed
+        self.wait_times = []  # List to store the wait times
+        self.last_idle_time = None  # Track when machine becomes idle
+        self.processed_items = 0  # Count of processed items
+        # if "wrap" in name.lower():
+        #     self.wrapping_items = 4 # Number of items to wrap at once, if applicable
+
     def run(self):
         while True:
-            yield self.input_buffer.get()
-            process_time = max(CONFIG['MIN_SPEED'], min(self.speed, CONFIG['MAX_SPEED']))
-            self.latest_process_time = process_time
+            self.last_idle_time = self.env.now 
+            # if "wrap" in self.name.lower():
+            #     # Wait until enough items are available for wrapping
+            #     while len(self.input_buffer.items) < self.wrapping_items:
+            #         yield self.env.timeout(1)  # Wait a short time and check again
+            #     # Now get all items needed for wrapping
+            #     for _ in range(self.wrapping_items):
+            #         yield self.input_buffer.get()
+            # else:
+            #     yield self.input_buffer.get()
+            yield self.input_buffer.get()  # Wait for an item to be available
+            # Record when we start waiting for an item
+            
+            wait_time = self.env.now - self.last_idle_time  # Time spent waiting for item
+            self.wait_times.append(wait_time)
+            process_time = max(self.min_time, min(self.process_time, self.max_time))
+            self.process_time = process_time
             yield self.env.timeout(process_time)
+            self.processed_items += 1  # Increment processed items count
             yield self.output_buffer.put(1)
 
 class RoboticArm:
+    """
+    RoboticArm simulates a robotic arm that transfers items from one buffer to another.
+    Can pick how much items to transfer at once, and has a speed parameter that affects how long it takes to transfer items.
+    TODO: add how many items to transfer at once. Larger -> slower, but moves more items at once
+    Args:
+        env (simpy.Environment): Simulation environment.
+        input_buffer (Buffer): Buffer to get items from.
+        output_buffer (Buffer): Buffer to put items into.
+        speed (float): Speed of the robotic arm.
+    """
     def __init__(self, env, input_buffer, output_buffer, speed):
         self.env = env
         self.input_buffer = input_buffer
@@ -118,6 +218,11 @@ def setup_simulation(env, speeds=None, buffer_sizes=None, conveyor_times=None):
         CONFIG['CONVEYOR_TIMES']['conv_5'],
         CONFIG['CONVEYOR_TIMES']['conv_6'],
     ]
+    conv_times = [CONFIG['CONVEYOR_INFO']['min'], CONFIG['CONVEYOR_INFO']['max']]
+    conv_fall_off_prob = CONFIG['CONVEYOR_INFO']['fall_off_prob']
+    
+    machine_times = [CONFIG['MACHINE_INFO']['min'], CONFIG['MACHINE_INFO']['max']]
+
     buffers = {
         'funnel': Buffer(env, CONFIG['RAW_MATERIALS'], 'Funnel'),
         'conveyor_1': Buffer(env, bs['generic'], 'Conveyor 1'),
@@ -139,19 +244,19 @@ def setup_simulation(env, speeds=None, buffer_sizes=None, conveyor_times=None):
     env.process(raw_material_source(env, CONFIG['RAW_MATERIALS'], buffers['funnel']))
 
     conveyors = []
-    conveyors.append(ConveyorBelt(env, "Funnel to Conveyor 1", buffers['funnel'], buffers['conveyor_1'], ct[0]))
-    conveyors.append(ConveyorBelt(env, "Conveyor 1 to Blow", buffers['conveyor_1'], buffers['blow'], ct[0]))
-    m1 = Machine(env, "Blow Molding", buffers['blow'], buffers['conveyor_2'], speeds[0] if speeds is not None else CONFIG['SPEEDS']['blow_molding'])
-    conveyors.append(ConveyorBelt(env, "Conveyor 2 to Buffer 1", buffers['conveyor_2'], buffers['buffer_1'], ct[1]))
-    conveyors.append(ConveyorBelt(env, "Buffer 1 to Conveyor 3", buffers['buffer_1'], buffers['conveyor_3'], ct[2]))
-    conveyors.append(ConveyorBelt(env, "Conveyor 3 to Clean", buffers['conveyor_3'], buffers['clean'], ct[2]))
-    m2 = Machine(env, "Cleaning/Filling", buffers['clean'], buffers['conveyor_4'], speeds[1] if speeds is not None else CONFIG['SPEEDS']['cleaning'])
-    conveyors.append(ConveyorBelt(env, "Conveyor 4 to Buffer 2", buffers['conveyor_4'], buffers['buffer_2'], ct[3]))
-    conveyors.append(ConveyorBelt(env, "Buffer 2 to Conveyor 5", buffers['buffer_2'], buffers['conveyor_5'], ct[4]))
-    conveyors.append(ConveyorBelt(env, "Conveyor 5 to Wrap", buffers['conveyor_5'], buffers['wrap'], ct[4]))
-    m3 = Machine(env, "Wrapping", buffers['wrap'], buffers['conveyor_6'], speeds[2] if speeds is not None else CONFIG['SPEEDS']['wrapping'])
-    conveyors.append(ConveyorBelt(env, "Conveyor 6 to Buffer 3", buffers['conveyor_6'], buffers['buffer_3'], ct[5]))
-    conveyors.append(ConveyorBelt(env, "Buffer 3 to Storage", buffers['buffer_3'], buffers['storage'], ct[5]))
+    conveyors.append(ConveyorBelt(env, "Funnel to Conveyor 1", buffers['funnel'], buffers['conveyor_1'],conv_times, ct[0],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Conveyor 1 to Blow", buffers['conveyor_1'], buffers['blow'],conv_times, ct[0],conv_fall_off_prob))
+    m1 = Machine(env, "Blow Molding", buffers['blow'], buffers['conveyor_2'], machine_times, speeds[0] if speeds is not None else CONFIG['SPEEDS']['blow_molding'])
+    conveyors.append(ConveyorBelt(env, "Conveyor 2 to Buffer 1", buffers['conveyor_2'], buffers['buffer_1'],conv_times, ct[1],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Buffer 1 to Conveyor 3", buffers['buffer_1'], buffers['conveyor_3'],conv_times, ct[2],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Conveyor 3 to Clean", buffers['conveyor_3'], buffers['clean'], conv_times,ct[2],conv_fall_off_prob))
+    m2 = Machine(env, "Cleaning/Filling", buffers['clean'], buffers['conveyor_4'], machine_times, speeds[1] if speeds is not None else CONFIG['SPEEDS']['cleaning'])
+    conveyors.append(ConveyorBelt(env, "Conveyor 4 to Buffer 2", buffers['conveyor_4'], buffers['buffer_2'],conv_times, ct[3],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Buffer 2 to Conveyor 5", buffers['buffer_2'], buffers['conveyor_5'],conv_times, ct[4],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Conveyor 5 to Wrap", buffers['conveyor_5'], buffers['wrap'], conv_times,ct[4],conv_fall_off_prob))
+    m3 = Machine(env, "Wrapping", buffers['wrap'], buffers['conveyor_6'], machine_times, speeds[2] if speeds is not None else CONFIG['SPEEDS']['wrapping'])
+    conveyors.append(ConveyorBelt(env, "Conveyor 6 to Buffer 3", buffers['conveyor_6'], buffers['buffer_3'],conv_times, ct[5],conv_fall_off_prob))
+    conveyors.append(ConveyorBelt(env, "Buffer 3 to Storage", buffers['buffer_3'], buffers['storage'],conv_times, ct[5],conv_fall_off_prob))
     robotic_arm = RoboticArm(env, buffers['storage'], buffers['platform'], speeds[3] if speeds is not None else CONFIG['SPEEDS']['robotic_arm'])
 
     machines = [m1, m2, m3, robotic_arm]
