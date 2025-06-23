@@ -31,6 +31,7 @@ class ConveyorBelt():
         self.output_buffer = output_buffer # Buffer to put items into
         self.capacity = capacity  # Maximum items on conveyor at once
         self.name = name  # Name of the conveyor belt
+        conveyor_
 
         # Conveyorbelt time configss
         if isinstance(conv_time_config, dict):
