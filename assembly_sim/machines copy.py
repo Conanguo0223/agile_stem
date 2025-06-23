@@ -12,7 +12,7 @@ class Buffer(simpy.Store):
 
 class ConveyorBelt():
     """
-    ConveyorBelt simulates a conveyor belt that transfers items between buffers.
+    ConveyorBelt simulates a conveyor belt that trnsfers items between buffers.
     It waits for an item to be available in the input buffer, processes it for a specified time,
     and then puts it into the output buffer. 
     Tracks wait times and idle times.
