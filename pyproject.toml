@@ -1,0 +1,69 @@
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+
+[project]
+name = 'lineflow-rl'
+authors = [
+    { name = 'Kai Müller', email = 'kai.mueller@hs-kempten.de' },
+    { name = 'Martin Wenzel', email = 'martin.wenzel@stud.hs-kempten.de' },
+    { name = 'Tobias Windisch', email = 'tobias.windisch@hs-kempten.de' },
+]
+maintainers = [
+    { name = 'Tobias Windisch', email = 'tobias.windisch@hs-kempten.de' },
+]
+description = 'Python tool to simulate assembly lines.'
+readme = "README.md"
+dynamic = ['version']
+requires-python = "<3.13"
+dependencies = [
+    'pandas',
+    'scipy',
+    'simpy',
+    'numpy<2.0.0',
+    'matplotlib',
+    'pygame',
+    'mkdocs',
+    'mkdocs-material',
+    'mkdocstrings-python',
+    'mike',
+    'ruff',
+    'pytest',
+    'pyarrow', # ?
+    'torch',
+    'wandb',
+    'tqdm',
+    'stable_baselines3',
+    'sb3-contrib',
+    'gekko',
+]
+
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+include = ['lineflow*']
+
+
+[tool.setuptools.dynamic]
+version = { file = 'VERSION' }
+
+
+[tool.ruff]
+
+select = [
+  'E',   # pycodestyle
+  'F',   # pyflakes
+  'UP',  # pyupgrade
+  'D',   # pydocstyle
+  'PL',  # pylint
+]
+line-length = 120
+
+[tool.ruff.pydocstyle]
+convention = 'google'
+
+[tool.ruff.mccabe]
+max-complexity = 5

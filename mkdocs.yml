@@ -1,0 +1,56 @@
+site_name: LineFlow
+repo_url: https://github.com/hs-kempten/lineflow/
+repo_name: LineFlow
+use_directory_urls: false
+
+theme:
+    name: material
+    highlightjs: true
+    logo: ./imgs/line_flow.png
+    color_mode: auto
+    hljs_languages:
+      - python
+    navigation_depth: 3
+    include_sidebar: true
+    features:
+      - navigation.expand
+      - navigation.instant
+      - navigation.instant.prefetch
+      - navigation.instant.preview
+
+plugins:
+    - mkdocstrings:
+        enable_inventory: true
+    - search
+    - mike:
+        canonical_version: latest
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - About: index.md
+  - User Guide: 
+    - Quick Start: userguide/quickstart.md
+    - Core Concepts: userguide/core_concepts.md
+    - Custom scenarios: userguide/customization.md
+    - Reinforcement Learning: userguide/rl.md
+    - Visualization: userguide/visualization.md
+  - Examples: 
+    - Worker Assignment: examples/worker_assignment.md
+    - Part Distribution: examples/multi_process.md
+    - Waiting Time: examples/waiting_time.md
+    - Waiting Time Jump: examples/waiting_time_jump.md
+    - Complex Line: examples/complex_line.md
+  - API: api.md
+
