@@ -1,0 +1,23 @@
+target_bottles: 100
+funnel:
+  capacity: 500
+conveyor_belts:
+  conv1: { capacity: 10, speed: 1.0 }
+  conv2: { capacity: 10, speed: 1.0 }
+  conv3: { capacity: 10, speed: 1.0 }
+  conv4: { capacity: 10, speed: 1.0 }
+  conv5: { capacity: 10, speed: 1.0 }
+  conv6: { capacity: 10, speed: 1.0 }
+machines:
+  blow:   { capacity: 10, speed: 2.0 }
+  clean:  { capacity: 10, speed: 2.0 }
+  wrap:   { capacity: 10, speed: 2.0 }
+buffers:
+  buffer1: { capacity: 10 }
+  buffer2: { capacity: 10 }
+storage:
+  capacity: 200
+robotic_arm:
+  speed: 2.0
+platform:
+  capacity: 200

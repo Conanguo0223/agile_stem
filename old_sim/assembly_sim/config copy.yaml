@@ -1,0 +1,65 @@
+target_bottles: 1000
+raw_materials_start: 200
+
+# Defines the order of the assembly line (stage-by-stage)
+assembly_line:
+  - type: buffer
+    name: funnel
+    capacity: 100
+
+  - type: conveyor
+    name: funnel2bm
+    capacity: 10
+    conv_time: {base: 2.0, min: 1.0, max: 4.0}
+    fall_off_prob: 0.01
+
+  - type: machine
+    name: blow_mold
+    process_time: {base: 3.0, min: 2.0, max: 6.0}
+
+  - type: buffer
+    name: bm2clean
+    capacity: 50
+
+  - type: conveyor
+    name: bm2clean_conv
+    capacity: 10
+    conv_time: 2.0
+    fall_off_prob: 0.01
+
+  - type: machine
+    name: clean
+    process_time: {base: 2.5, min: 1.5, max: 5.0}
+
+  - type: buffer
+    name: clean2wrap
+    capacity: 50
+
+  - type: conveyor
+    name: clean2wrap_conv
+    capacity: 10
+    conv_time: 2.0
+    fall_off_prob: 0.01
+
+  - type: machine
+    name: wrap
+    process_time: {base: 2.0, min: 1.0, max: 4.0}
+
+  - type: buffer
+    name: wrap2arm
+    capacity: 50
+
+  - type: conveyor
+    name: wrap2storage
+    capacity: 10
+    conv_time: 2.0
+    fall_off_prob: 0.01
+
+  - type: buffer
+    name: storage
+    capacity: 200
+
+  - type: robotic_arm
+    name: storage_arm
+    speed: {base: 2.0, min: 1.0, max: 5.0}
+    batch_size: 3
