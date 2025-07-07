@@ -127,13 +127,18 @@ class WaitingTime(Line):
         self.t_jump_max = t_jump_max
         self.assembly_condition = assembly_condition
         self.R = R
+        self.components = None
 
         if self.with_jump:
             assert self.t_jump_max is not None
         super().__init__(scrap_factor=scrap_factor, **kwargs)
 
     def build(self):
-
+        graph_info = {
+            'nodes': {},
+            'edges': [],
+            'metadata': {}
+        }
         source_main = Source(
             'S_main',
             position=(300, 300),
@@ -142,7 +147,17 @@ class WaitingTime(Line):
             actionable_waiting_time=False,
             unlimited_carriers=True,
         )
-
+        # Record node information
+        graph_info['nodes']['S_main'] = {
+            'type': 'Source',
+            'processing_time': 0,
+            'carrier_capacity': 2,
+            'actionable_waiting_time': False,
+            'properties': {
+                'is_main_source': True,
+                'controllable': False
+            }
+        }
         source_component = Source(
             'S_component',
             position=(500, 450),
@@ -156,7 +171,19 @@ class WaitingTime(Line):
             unlimited_carriers=True,
             actionable_waiting_time=True,
         )
-
+        graph_info['nodes']['S_component'] = {
+            'type': 'Source',
+            'processing_time': self.processing_time_source,
+            'waiting_time': 0,
+            'waiting_time_step': 1,
+            'carrier_capacity': 1,
+            'part_specs': [{"assembly_condition": self.assembly_condition}],
+            'actionable_waiting_time': True,
+            'properties': {
+                'is_component_source': True,
+                'controllable': True
+            }
+        }
         if self.with_jump:
             assembly = WTAssembly(
                 'Assembly',
@@ -166,6 +193,17 @@ class WaitingTime(Line):
                 processing_time=20,
                 NOK_part_error_time=5,
             )
+            graph_info['nodes']['Assembly'] = {
+                'type': 'WTAssembly',
+                'processing_time': 20,
+                'NOK_part_error_time': 5,
+                't_jump_max': self.t_jump_max,
+                'R': self.R,
+                'properties': {
+                    'has_jump_behavior': True,
+                    'is_assembly': True
+                }
+            }
         else:
             assembly = Assembly(
                 'Assembly',
@@ -173,20 +211,68 @@ class WaitingTime(Line):
                 processing_time=20,
                 NOK_part_error_time=5,
             )
+            graph_info['nodes']['Assembly'] = {
+                'type': 'Assembly',
+                'processing_time': 20,
+                'NOK_part_error_time': 5,
+                'properties': {
+                    'has_jump_behavior': False,
+                    'is_assembly': True
+                }
+            }
+
 
         sink = Sink('Sink', processing_time=0, position=(700, 300))
-
+        graph_info['nodes']['Sink'] = {
+            'type': 'Sink',
+            'processing_time': 0,
+            'properties': {
+                'is_sink': True
+            }
+        }
         assembly.connect_to_component_input(
             station=source_component,
             capacity=3,
             transition_time=self.transition_time,
         )
+        graph_info['edges'].append({
+            'source': 'S_component',
+            'target': 'Assembly',
+            'connection_type': 'component_input',
+            'capacity': 3,
+            'transition_time': self.transition_time,
+            'properties': {
+                'is_component_feed': True
+            }
+        })
         assembly.connect_to_input(source_main, capacity=2, transition_time=2)
+        graph_info['edges'].append({
+            'source': 'S_main',
+            'target': 'Assembly',
+            'connection_type': 'standard_input',
+            'capacity': 2,
+            'transition_time': 2,
+            'properties': {
+                'is_main_feed': True
+            }
+        })
+        
         sink.connect_to_input(assembly, capacity=2, transition_time=2)
+
+        graph_info['edges'].append({
+            'source': 'Assembly',
+            'target': 'Sink',
+            'connection_type': 'standard_input',
+            'capacity': 2,
+            'transition_time': 2,
+            'properties': {
+                'is_output': True
+            }
+        })
 
 
 if __name__ == '__main__':
     line = WaitingTime()
     agent = make_optimal_agent(line)
-    line.run(simulation_end=4000, agent=agent)
+    line.run(simulation_end=4000, agent=agent, visualize=True, capture_screen=True)
     print(line.get_n_parts_produced())

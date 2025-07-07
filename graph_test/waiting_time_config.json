@@ -1,0 +1,92 @@
+{
+  "line_config": {
+    "name": "WaitingTime",
+    "parameters": {
+      "processing_time_source": 5,
+      "transition_time": 5,
+      "with_jump": false,
+      "assembly_condition": 35,
+      "scrap_factor": 1,
+      "R": 0.75
+    }
+  },
+  "nodes": {
+    "S_main": {
+      "type": "Source",
+      "position": [300, 300],
+      "processing_time": 0,
+      "carrier_capacity": 2,
+      "actionable_waiting_time": false,
+      "unlimited_carriers": true,
+      "properties": {
+        "is_main_source": true,
+        "controllable": false
+      }
+    },
+    "S_component": {
+      "type": "Source",
+      "position": [500, 450],
+      "processing_time": "${processing_time_source}",
+      "waiting_time": 0,
+      "waiting_time_step": 1,
+      "carrier_capacity": 1,
+      "part_specs": [{"assembly_condition": "${assembly_condition}"}],
+      "unlimited_carriers": true,
+      "actionable_waiting_time": true,
+      "properties": {
+        "is_component_source": true,
+        "controllable": true
+      }
+    },
+    "Assembly": {
+      "type": "Assembly",
+      "position": [500, 300],
+      "processing_time": 20,
+      "NOK_part_error_time": 5,
+      "properties": {
+        "has_jump_behavior": false,
+        "is_assembly": true
+      }
+    },
+    "Sink": {
+      "type": "Sink",
+      "position": [700, 300],
+      "processing_time": 0,
+      "properties": {
+        "is_sink": true
+      }
+    }
+  },
+  "edges": [
+    {
+      "source": "S_component",
+      "target": "Assembly",
+      "connection_type": "component_input",
+      "capacity": 3,
+      "transition_time": "${transition_time}",
+      "properties": {
+        "is_component_feed": true
+      }
+    },
+    {
+      "source": "S_main",
+      "target": "Assembly",
+      "connection_type": "standard_input",
+      "capacity": 2,
+      "transition_time": 2,
+      "properties": {
+        "is_main_feed": true
+      }
+    },
+    {
+      "source": "Assembly",
+      "target": "Sink",
+      "connection_type": "standard_input",
+      "capacity": 2,
+      "transition_time": 2,
+      "properties": {
+        "is_output": true
+      }
+    }
+  ]
+}
