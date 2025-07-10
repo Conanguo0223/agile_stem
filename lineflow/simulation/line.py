@@ -3,6 +3,8 @@ import pygame
 import numpy as np
 import logging
 from tqdm import tqdm
+from torch_geometric.data import HeteroData
+import torch
 
 from lineflow.simulation.stationary_objects import StationaryObject
 from lineflow.simulation.states import LineStates
@@ -32,6 +34,7 @@ class Line:
         random_state=10,
         step_size=1,
         scrap_factor=1,
+        auto_generate_graph=True,
         info=None,
     ):
 
@@ -41,6 +44,11 @@ class Line:
         self.realtime = realtime
         self.factor = factor
         self.step_size = step_size
+
+        self._static_graph_info = None
+        self._dynamic_graph_cache = None
+        self._last_graph_time = None
+        self.auto_generate_graph = auto_generate_graph
         if info is None:
             info = []
         self._info = info
@@ -241,6 +249,7 @@ class Line:
                 if simulation_end is not None and self.env.peek() > simulation_end:
                     terminated = True
 
+                graph_state = self.get_graph_state()
                 return self.state, terminated
 
             self.env.step()
@@ -332,3 +341,167 @@ class Line:
 
     def __getitem__(self, name):
         return self._objects[name]
+    
+    # graph related functions
+    def _extract_graph_from_objects(self):
+        """
+        Automatically extract graph structure from line objects and state
+        """
+        if not hasattr(self, 'state') or self.state is None:
+            return None
+        
+        # Get all object names from state
+        object_names = self.state.object_names
+        
+        nodes = {}
+        edges = []
+        buffers = {}
+        # Process each object to identify nodes and buffers
+        for obj_name in object_names:
+            obj = self._objects.get(obj_name)
+            
+            if obj is None:
+                continue
+                
+            # Check if this is a buffer (connecting two stations)
+            if 'Buffer_' in obj_name and '_to_' in obj_name:
+                # Parse buffer name: Buffer_Source_to_Assembly
+                parts = obj_name.replace('Buffer_', '').split('_to_')
+                if len(parts) == 2:
+                    source_node, target_node = parts
+                    buffers[obj_name] = {
+                        'source': source_node,
+                        'target': target_node,
+                        'capacity': getattr(obj, 'capacity', None),
+                        'current_load': getattr(obj, 'level', 0) if hasattr(obj, 'level') else 0
+                    }
+                    
+                    # Add edge
+                    edges.append({
+                        'source': source_node,
+                        'target': target_node,
+                        'buffer_name': obj_name,
+                        'capacity': getattr(obj, 'capacity', None),
+                        'transition_time': getattr(obj, 'transition_time', None)
+                    })
+            else:
+                # This is a station/component node
+                node_info = {
+                    'name': obj_name,
+                    'type': type(obj).__name__,
+                }
+                node_info['states'] = self.state[obj_name].values
+                # # Add static configuration
+                # if hasattr(obj, 'processing_time'):
+                #     node_info['processing_time'] = obj.processing_time
+                # if hasattr(obj, 'carrier_capacity'):
+                #     node_info['carrier_capacity'] = obj.carrier_capacity
+                # if hasattr(obj, 'actionable_waiting_time'):
+                #     node_info['actionable_waiting_time'] = obj.actionable_waiting_time
+                
+                # Add component-specific properties
+                node_info['properties'] = self._extract_component_properties(obj)
+                
+                nodes[obj_name] = node_info
+        
+        return {
+            'nodes': nodes,
+            'edges': edges,
+            'buffers': buffers,
+            'metadata': {
+                'auto_generated': True,
+                'total_objects': len(object_names),
+                'node_count': len(nodes),
+                'edge_count': len(edges),
+                'buffer_count': len(buffers)
+            }
+        }
+    
+    def _extract_component_properties(self, component):
+        """Extract component-specific properties"""
+        properties = {}
+        
+        # Check component type and extract relevant properties
+        component_type = type(component).__name__
+        
+        if component_type == 'Source':
+            properties.update({
+                'is_source': True,
+                'unlimited_carriers': getattr(component, 'unlimited_carriers', False),
+                'part_specs': getattr(component, 'part_specs', None)
+            })
+        elif component_type == 'Sink':
+            properties.update({
+                'is_sink': True
+            })
+        elif 'Assembly' in component_type:
+            properties.update({
+                'is_assembly': True,
+                'NOK_part_error_time': getattr(component, 'NOK_part_error_time', None)
+            })
+        
+        # Check for actionable properties
+        if hasattr(component, 'state') and component.state is not None:
+            actionable_states = []
+            for state_name, state in component.state.states.items():
+                if state.is_actionable:
+                    actionable_states.append(state_name)
+            properties['actionable_states'] = actionable_states
+            properties['controllable'] = len(actionable_states) > 0
+        
+        return properties
+
+    def get_graph_state(self):
+        graph_info = self._extract_graph_from_objects()
+
+        heterodata = HeteroData()
+        node_types = {}
+        for node_name, node_data in graph_info['nodes'].items():
+            node_type = node_data['type']
+            if node_type not in node_types:
+                node_types[node_type] = []
+            node_types[node_type].append((node_name, node_data))
+
+        # Create node features and mappings
+        node_mapping = {}
+        for node_type, nodes in node_types.items():
+            features = []
+            for i, (node_name, node_data) in enumerate(nodes):
+                # Create feature vector from recorded data
+                # feat_vector = [
+                #     node_data.get('processing_time', 0),
+                #     node_data.get('position', [0, 0])[0] / 1000,
+                #     node_data.get('position', [0, 0])[1] / 1000,
+                #     node_data.get('carrier_capacity', 1),
+                # ]
+                feat_vector = node_data['states']
+                features.append(feat_vector)
+                node_mapping[node_name] = (node_type, i)
+
+            heterodata[node_type].x = torch.tensor(features, dtype=torch.float)
+
+        # Group and add edges
+        edge_types = {}
+        for edge_data in graph_info['edges']:
+            source_name = edge_data['source']
+            target_name = edge_data['target']
+            
+            source_type = node_mapping[source_name][0]
+            target_type = node_mapping[target_name][0]
+            
+            edge_type = (source_type, 'connects_to', target_type)
+            
+            if edge_type not in edge_types:
+                edge_types[edge_type] = []
+            
+            source_idx = node_mapping[source_name][1]
+            target_idx = node_mapping[target_name][1]
+            edge_types[edge_type].append([source_idx, target_idx])
+        
+        # Add edges to HeteroData
+        for edge_type, edge_list in edge_types.items():
+            if edge_list:
+                edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+                heterodata[edge_type].edge_index = edge_index
+
+        return heterodata

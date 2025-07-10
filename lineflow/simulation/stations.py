@@ -116,6 +116,9 @@ class Station(StationaryObject):
         processing_std=None,
         rework_probability=0,
         worker_pool=None,
+        # New parameters for adjusting waiting time
+        actionable_processing_time=False,
+        processing_time_range=(1, 50),
     ):
 
         super().__init__()
@@ -133,7 +136,12 @@ class Station(StationaryObject):
             self.worker_pool.register_station(self)
 
         self.processing_time = processing_time
-        self.rework_probability = rework_probability
+        self.rework_probability = rework_probability # the probability of a carrier to be reworked (takes 2x the time)
+
+        # added parameters for adjusting waiting time
+        self.base_processing_time = processing_time
+        self.actionable_processing_time = actionable_processing_time
+        self.processing_time_range = processing_time_range
 
         if self.rework_probability > 1 or self.rework_probability < 0:
             raise ValueError('rework_probability should should be between 0 and 1')
@@ -215,8 +223,13 @@ class Station(StationaryObject):
         """
 
         coeff = self.get_performance_coefficient()
-
-        t = time*coeff + self.random.exponential(scale=scale)
+        # Use current processing time if actionable, otherwise use passed time
+        if time is None:
+            current_time = self.get_current_processing_time()
+        else:
+            current_time = time
+        
+        t = current_time * coeff + self.random.exponential(scale=scale)
 
         rework = self.random.choice(
             [1, 2],
@@ -322,6 +335,13 @@ class Station(StationaryObject):
     def apply(self, actions):
         self._derive_actions_from_new_state(actions)
         self.state.apply(actions)
+
+    def get_current_processing_time(self):
+        """Get the current processing time (from state if actionable, else base value)"""
+        if hasattr(self, 'state') and self.actionable_processing_time:
+            return self.state['processing_time'].value
+        else:
+            return self.processing_time
 
 
 class Assembly(Station):
@@ -502,7 +522,8 @@ class Process(Station):
         processing_std=None,
         rework_probability=0,
         worker_pool=None,
-
+        actionable_processing_time=False,
+        processing_time_range=(1, 50),
     ):
 
         super().__init__(
@@ -512,6 +533,8 @@ class Process(Station):
             processing_std=processing_std,
             rework_probability=rework_probability,
             worker_pool=worker_pool,
+            actionable_processing_time=actionable_processing_time,
+            processing_time_range=processing_time_range,
         )
 
         if buffer_in is not None:
@@ -521,14 +544,23 @@ class Process(Station):
             self._connect_to_output(buffer_out)
 
     def init_state(self):
-
-        self.state = ObjectStates(
-            DiscreteState('on', categories=[True, False], is_actionable=False, is_observable=False),
-            DiscreteState('mode', categories=['working', 'waiting', 'failing']),
-            TokenState(name='carrier', is_observable=False),
-            NumericState('processing_time', is_actionable=False, is_observable=True, vmin=0),
-            CountState('n_workers', is_actionable=False, is_observable=True, vmin=0),
-        )
+        
+        if self.actionable_processing_time:
+            self.state = ObjectStates(
+                DiscreteState('on', categories=[True, False], is_actionable=False, is_observable=False),
+                DiscreteState('mode', categories=['working', 'waiting', 'failing']),
+                TokenState(name='carrier', is_observable=False),
+                NumericState('processing_time', is_actionable=True, is_observable=True, vmin=0),
+                CountState('n_workers', is_actionable=False, is_observable=True, vmin=0),
+            )
+        else:
+            self.state = ObjectStates(
+                DiscreteState('on', categories=[True, False], is_actionable=False, is_observable=False),
+                DiscreteState('mode', categories=['working', 'waiting', 'failing']),
+                TokenState(name='carrier', is_observable=False),
+                NumericState('processing_time', is_actionable=False, is_observable=True, vmin=0),
+                CountState('n_workers', is_actionable=False, is_observable=True, vmin=0),
+            )
         self.state['on'].update(True)
         self.state['mode'].update("waiting")
         self.state['carrier'].update(None)
